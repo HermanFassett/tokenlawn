@@ -6,7 +6,7 @@ import { renderAnsi, renderLawnSvg } from "@tokenlawn/renderer";
 import type { UsageRecord } from "@tokenlawn/protocol";
 import { CcusageCollector, summarizeSources } from "./collector.js";
 import { loadConfig, logout as clearLogin, saveConfig, configPath } from "./config.js";
-import { pollDeviceToken, startDeviceAuthorization, syncBatch, verifyProvider } from "./api.js";
+import { pollDeviceToken, revokeDevice, startDeviceAuthorization, syncBatch, verifyProvider } from "./api.js";
 import { promptSecret } from "./secret-prompt.js";
 
 const collector = new CcusageCollector();
@@ -66,7 +66,7 @@ export async function sync(options: { full?: boolean } = {}): Promise<void> {
 
 export async function publish(): Promise<void> { await scan(); await sync({ full: true }); }
 export async function status(): Promise<void> { const config = await loadConfig(); process.stdout.write(`${config.deviceToken ? `Signed in as @${config.username}` : "Not signed in"}\nDevice: ${config.deviceId}\nTimezone: ${config.timezone}\nLast sync: ${config.lastSuccessfulSync ?? "never"}\nConfig: ${configPath()}\n`); }
-export async function logout(): Promise<void> { await clearLogin(); process.stdout.write(`${pc.green("✓")} Signed out and removed the local device token.\n`); }
+export async function logout(): Promise<void> { const config = await loadConfig(); let warning = ""; if (config.deviceToken) { try { await revokeDevice(config); } catch { warning = " The server could not be reached, so revoke the device from Settings when you are online."; } } await clearLogin(); process.stdout.write(`${pc.green("✓")} Signed out and revoked the local device when reachable.${warning}\n`); }
 
 export async function providers(provider?: string): Promise<void> {
   if (!provider) { process.stdout.write("Provider verification (server fetched, leaderboard eligible):\n\n  openrouter  Management API key\n  openai      Organization Admin API key (sk-admin-…)\n  anthropic   Organization Admin API key\n\nNormal inference/project keys do not have access to organization usage reports.\nYou can also verify through https://tokenlawn.dev/settings/providers\n\nRun: tokenlawn providers verify <provider>\n"); return; }

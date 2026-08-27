@@ -1,6 +1,6 @@
 {
   "name": "tokenlawn",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "See how much AI you use while coding",
   "type": "module",
   "license": "MIT",
@@ -17,9 +17,9 @@
   },
   "dependencies": {
     "ccusage": "20.0.20",
-    "commander": "^14.0.0",
-    "open": "^10.2.0",
-    "picocolors": "^1.1.1"
+    "commander": "14.0.3",
+    "open": "10.2.0",
+    "picocolors": "1.1.1"
   },
-  "devDependencies": { "@tokenlawn/core": "workspace:*", "@tokenlawn/protocol": "workspace:*", "@tokenlawn/renderer": "workspace:*", "@types/node": "^24.3.0", "tsup": "^8.5.0", "tsx": "^4.20.5", "typescript": "^5.9.2", "vitest": "^3.2.4" }
+  "devDependencies": { "@tokenlawn/core": "workspace:*", "@tokenlawn/protocol": "workspace:*", "@tokenlawn/renderer": "workspace:*", "@types/node": "24.13.3", "tsup": "8.5.1", "tsx": "4.23.12", "typescript": "5.9.3", "vitest": "3.2.7" }
 }

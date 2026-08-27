@@ -57,6 +57,7 @@ export async function saveConfig(config: CliConfig): Promise<void> {
 export async function logout(): Promise<void> {
   const config = await loadConfig();
   delete config.deviceToken; delete config.username; delete config.lastSuccessfulSync;
+  config.deviceId = randomUUID();
   config.syncedRecordHashes = [];
   await saveConfig(config);
 }

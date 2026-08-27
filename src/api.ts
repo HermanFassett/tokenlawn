@@ -22,6 +22,11 @@ export async function pollDeviceToken(config: CliConfig, authorizationId: string
   return request(`${config.apiBaseUrl}/api/v1/device/token`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ deviceAuthorizationId: authorizationId, deviceId: config.deviceId }) }, (value) => deviceTokenResponseSchema.parse(value));
 }
 
+export async function revokeDevice(config: CliConfig) {
+  if (!config.deviceToken) return { revoked: false };
+  return request(`${config.apiBaseUrl}/api/v1/device/revoke`, { method: "POST", headers: { authorization: `Bearer ${config.deviceToken}` } }, (value) => value as { revoked: boolean });
+}
+
 export async function syncBatch(config: CliConfig, records: UsageRecord[]) {
   if (!config.deviceToken) throw new Error("Run tokenlawn login first.");
   const body: SyncRequest = { protocolVersion: 1, deviceId: config.deviceId, batchId: crypto.randomUUID(), timezone: config.timezone, records };

@@ -2,7 +2,7 @@ import { Command } from "commander";
 import pc from "picocolors";
 import { login, logout, providers, publish, scan, status, sync } from "./commands.js";
 
-const program = new Command().name("tokenlawn").description("See how much AI you use while coding").version("1.0.0");
+const program = new Command().name("tokenlawn").description("See how much AI you use while coding").version("1.0.1");
 program.option("--svg <path>", "write a local SVG").option("--json", "print normalized JSON").action(async (options) => { await scan(options); });
 program.command("scan").description("scan history and show the local lawn").option("--svg <path>").option("--json").action(async (options) => { await scan(options); });
 program.command("login").description("authorize this computer using a browser").action(login);

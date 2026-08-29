@@ -21,6 +21,16 @@ const string = (row: Json, ...keys: string[]) => {
   return undefined;
 };
 
+const dateOnly = /^\d{4}-\d{2}-\d{2}$/;
+function dateInTimezone(value: string, timeZone: string): string {
+  if (dateOnly.test(value)) return value;
+  const instant = new Date(value);
+  if (Number.isNaN(instant.getTime())) return value.slice(0, 10);
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(instant);
+  const values = Object.fromEntries(parts.filter((part) => part.type !== "literal").map((part) => [part.type, part.value])) as Record<string, string>;
+  return values.year && values.month && values.day ? `${values.year}-${values.month}-${values.day}` : value.slice(0, 10);
+}
+
 function flattenRows(payload: unknown): Json[] {
   if (Array.isArray(payload)) return payload.filter((item): item is Json => !!item && typeof item === "object");
   if (!payload || typeof payload !== "object") return [];
@@ -37,10 +47,11 @@ function flattenRows(payload: unknown): Json[] {
   return [];
 }
 
-export function rawFromRow(row: Json, index: number): RawUsage[] {
+export function rawFromRow(row: Json, index: number, timeZone = "UTC"): RawUsage[] {
   const source = string(row, "agent", "source", "provider", "tool") ?? "unknown";
   const metadata = row.metadata && typeof row.metadata === "object" ? row.metadata as Json : {};
-  const date = (string(row, "date", "usageDate", "lastActivity", "timestamp") ?? string(metadata, "lastActivity", "timestamp"))?.slice(0, 10);
+  const rawDate = string(row, "date", "usageDate", "lastActivity", "timestamp") ?? string(metadata, "lastActivity", "timestamp");
+  const date = rawDate ? dateInTimezone(rawDate, timeZone) : undefined;
   if (!date) return [];
   const sessionId = string(row, "period", "sessionId", "session_id", "id") ?? `${source}:${date}:${index}`;
   if (Array.isArray(row.modelBreakdowns) && row.modelBreakdowns.length) {
@@ -77,7 +88,7 @@ export class CcusageCollector implements UsageCollector {
   }
   async collect(options: { timezone: string; since?: string }): Promise<UsageRecord[]> {
     const rows = await this.run(options.timezone, options.since);
-    const raw = rows.flatMap(rawFromRow);
+    const raw = rows.flatMap((row, index) => rawFromRow(row, index, options.timezone));
     return Promise.all(raw.map(normalizeUsage));
   }
   async detect(): Promise<DetectedSource[]> {

@@ -3,6 +3,13 @@ import { displaySource, rawFromRow, summarizeSources } from "./collector.js";
 import { normalizeUsage } from "@tokenlawn/core";
 
 describe("summarizeSources", () => {
+  it("assigns UTC timestamps to the configured local calendar day", async () => {
+    const raw = rawFromRow({ agent: "codex", lastActivity: "2026-08-28T03:10:00.000Z" }, 0, "America/Los_Angeles");
+    const record = await normalizeUsage(raw[0]!);
+    expect(record.usageDate).toBe("2026-08-27");
+    expect(rawFromRow({ agent: "codex", date: "2026-08-28" }, 0, "America/Los_Angeles")[0]?.date).toBe("2026-08-28");
+  });
+
   it("aggregates records without content", () => {
     const base = { schemaVersion: 1 as const, sourceRecordHash: "a".repeat(64), usageDate: "2026-08-25", inputUncachedTokens: 10, inputCachedTokens: 0, cacheWriteTokens: 0, outputTokens: 0, processedTokens: 10, freshTokens: 10, provenance: "local_collected" as const };
     expect(summarizeSources([{ ...base, source: "codex" }, { ...base, source: "codex", sourceRecordHash: "b".repeat(64) }])[0]).toMatchObject({ id: "codex", records: 2, tokens: 20 });

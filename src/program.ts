@@ -1,8 +1,9 @@
 import { Command } from "commander";
+import { version } from "../package.json";
 import { login, logout, providers, publish, scan, status } from "./commands.js";
 
 export function createProgram(): Command {
-  const program = new Command().name("tokenlawn").description("Turn your AI token usage into a daily activity graph").version("1.0.1");
+  const program = new Command().name("tokenlawn").description("Turn your AI token usage into a daily activity graph").version(version);
   program.option("--svg <path>", "save your lawn as a local SVG image").option("--json", "print usage records and totals as JSON").action(async (options) => { await scan(options); });
   program.command("scan").description("read local coding history and show your lawn").option("--svg <path>").option("--json").action(async (options) => { await scan(options); });
   program.command("login").description("connect this computer to your TokenLawn account").action(login);

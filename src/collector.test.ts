@@ -1,8 +1,21 @@
-import { describe, expect, it } from "vitest";
-import { displaySource, rawFromRow, summarizeSources } from "./collector.js";
+import { describe, expect, it, vi } from "vitest";
+import { CcusageCollector, displaySource, rawFromRow, summarizeSources } from "./collector.js";
 import { normalizeUsage } from "@tokenlawn/core";
 
 describe("summarizeSources", () => {
+  it("replaces undated Hermes sessions with stable daily model snapshots", async () => {
+    const collector = new CcusageCollector();
+    const day = { date: "2026-09-10", modelBreakdowns: [{ modelName: "test-model", inputTokens: 10, cacheReadTokens: 100, cacheCreationTokens: 5, outputTokens: 2, cost: 0.5 }] };
+    const run = vi.spyOn(collector, "run").mockResolvedValueOnce([{ agent: "hermes", period: "session-1", inputTokens: 10 }]).mockResolvedValueOnce([day]);
+    const first = await collector.collect({ timezone: "UTC" });
+    expect(run).toHaveBeenLastCalledWith("UTC", undefined, "hermesDaily");
+    expect(first).toHaveLength(1);
+    expect(first[0]).toMatchObject({ source: "hermes", usageDate: "2026-09-10", processedTokens: 117, estimatedCostMicros: 500000 });
+    run.mockResolvedValueOnce([]).mockResolvedValueOnce([{ ...day, date: "2026-09-09" }, { ...day, modelBreakdowns: [{ ...day.modelBreakdowns[0], inputTokens: 20 }] }]);
+    const next = await collector.collect({ timezone: "UTC" });
+    expect(next[1]?.sourceRecordHash).toBe(first[0]?.sourceRecordHash);
+    expect(next[1]?.processedTokens).toBe(127);
+  });
   it("assigns UTC timestamps to the configured local calendar day", async () => {
     const raw = rawFromRow({ agent: "codex", lastActivity: "2026-08-28T03:10:00.000Z" }, 0, "America/Los_Angeles");
     const record = await normalizeUsage(raw[0]!);

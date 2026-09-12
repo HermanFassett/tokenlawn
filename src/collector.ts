@@ -1,6 +1,8 @@
 import { execFile } from "node:child_process";
 import { createRequire } from "node:module";
 import { promisify } from "node:util";
+import { homedir, hostname } from "node:os";
+import { resolve } from "node:path";
 import { normalizeUsage, type RawUsage } from "@tokenlawn/core";
 import type { UsageRecord } from "@tokenlawn/protocol";
 
@@ -75,20 +77,27 @@ export function rawFromRow(row: Json, index: number, timeZone = "UTC"): RawUsage
 }
 
 export class CcusageCollector implements UsageCollector {
-  async run(timezone: string, since?: string): Promise<Json[]> {
+  async run(timezone: string, since?: string, report: "sessions" | "hermesDaily" = "sessions"): Promise<Json[]> {
     const binPackage = require.resolve("ccusage/package.json");
     const packageRoot = binPackage.replace(/[\\/]package\.json$/, "");
     const manifest = require(binPackage) as { bin: string | Record<string, string> };
     const relativeBin = typeof manifest.bin === "string" ? manifest.bin : manifest.bin.ccusage ?? Object.values(manifest.bin)[0];
     if (!relativeBin) throw new Error("The pinned ccusage package does not expose a CLI binary.");
-    const args = [joinPath(packageRoot, relativeBin), "session", "--all", "--json", "--offline", "--timezone", timezone];
+    const command = report === "hermesDaily" ? ["hermes", "daily"] : ["session", "--all"];
+    const args = [joinPath(packageRoot, relativeBin), ...command, "--json", "--offline", "--timezone", timezone];
     if (since) args.push("--since", since.replaceAll("-", ""));
     const { stdout } = await execute(process.execPath, args, { maxBuffer: 100 * 1024 * 1024, windowsHide: true, env: { ...process.env, NO_COLOR: "1", LOG_LEVEL: "0" } });
     return flattenRows(JSON.parse(stdout));
   }
   async collect(options: { timezone: string; since?: string }): Promise<UsageRecord[]> {
     const rows = await this.run(options.timezone, options.since);
-    const raw = rows.flatMap((row, index) => rawFromRow(row, index, options.timezone));
+    // v20 Hermes session reports omit dates. Use dated daily snapshots instead.
+    const daily = await this.run(options.timezone, options.since, "hermesDaily");
+    const roots = (process.env.HERMES_HOME ?? joinPath(homedir(), ".hermes")).split(",").map((root) => resolve(root.trim())).sort();
+    const scope = JSON.stringify([hostname(), roots]);
+    const raw = rows.filter((row) => string(row, "agent", "source", "provider", "tool") !== "hermes")
+      .flatMap((row, index) => rawFromRow(row, index, options.timezone));
+    raw.push(...daily.flatMap((row, index) => rawFromRow({ ...row, agent: "hermes", period: `hermes-daily-v1:${scope}:${string(row, "date")}` }, index, options.timezone)));
     return Promise.all(raw.map(normalizeUsage));
   }
   async detect(): Promise<DetectedSource[]> {

@@ -14,6 +14,7 @@ const sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(reso
 
 async function showLawn(records: UsageRecord[], options: { svg?: string; json?: boolean } = {}): Promise<void> {
   const stats = calculateStats(records), lawn = buildLawn(stats.daily);
+  if (records.some((record) => record.source === "hermes")) process.stderr.write("Hermes dates reflect session start dates, not each day's activity. Continuing a session changes its start-day total; streaks and daily peaks may be inaccurate.\n");
   if (options.json) process.stdout.write(`${JSON.stringify({ records, stats: { ...stats, daily: Object.fromEntries(stats.daily), bySource: Object.fromEntries(stats.bySource), byModel: Object.fromEntries(stats.byModel) } }, null, 2)}\n`);
   else {
     process.stdout.write(`\n${pc.bold(pc.green("YOUR TOKENLAWN"))}\n\n${renderAnsi(lawn)}\n\n${pc.bold(formatTokens(stats.processedTokens))} tokens processed\n${stats.activeDays} active days · ${stats.longestStreak}-day longest streak · ${formatTokens(stats.biggestDayTokens)} biggest day\n\n`);
@@ -54,7 +55,7 @@ async function upload(records: UsageRecord[], options: { full?: boolean } = {}):
   if (!config.deviceToken) await login();
   const authenticated = await loadConfig();
   const known = new Set(options.full ? [] : authenticated.syncedRecordHashes);
-  const pending = records.filter((record) => !known.has(record.sourceRecordHash));
+  const pending = records.filter((record) => record.source === "hermes" || !known.has(record.sourceRecordHash));
   let accepted = 0, duplicates = 0;
   for (let index = 0; index < pending.length; index += 500) {
     const batch = pending.slice(index, index + 500);
@@ -64,7 +65,7 @@ async function upload(records: UsageRecord[], options: { full?: boolean } = {}):
     process.stderr.write(`Published ${Math.min(index + batch.length, pending.length)}/${pending.length}\r`);
   }
   authenticated.lastSuccessfulSync = new Date().toISOString(); authenticated.syncedRecordHashes = [...known].slice(-50_000); await saveConfig(authenticated);
-  process.stdout.write(`\n${pc.green("✓")} ${accepted} new · ${duplicates} already published\nYour profile: ${authenticated.apiBaseUrl}/${authenticated.username}\n`);
+  process.stdout.write(`\n${pc.green("✓")} ${accepted} new or updated · ${duplicates} already published\nYour profile: ${authenticated.apiBaseUrl}/${authenticated.username}\n`);
 }
 
 export async function publish(options: { full?: boolean } = {}): Promise<void> {

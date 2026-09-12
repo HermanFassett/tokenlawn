@@ -79,6 +79,15 @@ describe("publish", () => {
     expect(stored.syncedRecordHashes).toEqual(records.map((item) => item.sourceRecordHash));
   });
 
+  it("resends tracked Hermes snapshots so growing sessions can update", async () => {
+    const hermes = { ...record(7), source: "hermes" };
+    mocks.loadConfig.mockResolvedValue(config({ deviceToken: "token", syncedRecordHashes: [hermes.sourceRecordHash] }));
+    mocks.collect.mockResolvedValue([hermes]);
+    await publish();
+    expect(mocks.syncBatch.mock.calls[0]?.[1]).toEqual([hermes]);
+    expect(process.stderr.write).toHaveBeenCalledWith(expect.stringContaining("session start dates"));
+  });
+
   it("automatically signs in before uploading", async () => {
     vi.useFakeTimers();
     const stored = config();

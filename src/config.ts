@@ -11,6 +11,7 @@ export interface CliConfig {
   timezone: string;
   lastSuccessfulSync?: string;
   syncedRecordHashes: string[];
+  syncedRecordFingerprints?: Record<string, string>;
 }
 
 function defaults(): CliConfig {
@@ -31,6 +32,8 @@ export function normalizeConfig(value: unknown): CliConfig {
     apiBaseUrl: typeof stored.apiBaseUrl === "string" && stored.apiBaseUrl ? stored.apiBaseUrl : fallback.apiBaseUrl,
     timezone: typeof stored.timezone === "string" && stored.timezone ? stored.timezone : fallback.timezone,
     syncedRecordHashes: Array.isArray(stored.syncedRecordHashes) ? stored.syncedRecordHashes.filter((hash): hash is string => typeof hash === "string") : [],
+    syncedRecordFingerprints: stored.syncedRecordFingerprints && typeof stored.syncedRecordFingerprints === "object"
+      ? Object.fromEntries(Object.entries(stored.syncedRecordFingerprints).filter(([key, value]) => /^[a-f0-9]{64}$/.test(key) && typeof value === "string" && /^[a-f0-9]{64}$/.test(value))) : {},
     ...(typeof stored.deviceToken === "string" && stored.deviceToken ? { deviceToken: stored.deviceToken } : {}),
     ...(typeof stored.username === "string" && stored.username ? { username: stored.username } : {}),
     ...(typeof stored.lastSuccessfulSync === "string" && stored.lastSuccessfulSync ? { lastSuccessfulSync: stored.lastSuccessfulSync } : {}),
@@ -59,5 +62,6 @@ export async function logout(): Promise<void> {
   delete config.deviceToken; delete config.username; delete config.lastSuccessfulSync;
   config.deviceId = randomUUID();
   config.syncedRecordHashes = [];
+  config.syncedRecordFingerprints = {};
   await saveConfig(config);
 }

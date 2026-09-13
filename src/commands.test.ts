@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { UsageRecord } from "@tokenlawn/protocol";
 import type { CliConfig } from "./config.js";
+import { recordFingerprint } from "./record-fingerprint.js";
 
 const mocks = vi.hoisted(() => ({
   collect: vi.fn(), loadConfig: vi.fn(), saveConfig: vi.fn(), syncBatch: vi.fn(),
@@ -39,14 +40,14 @@ describe("publish", () => {
     vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     mocks.open.mockResolvedValue(undefined);
-    mocks.syncBatch.mockResolvedValue({ accepted: 0, duplicates: 0, rejected: 0, statsVersion: 1 });
+    mocks.syncBatch.mockImplementation(async (_config, records: UsageRecord[]) => ({ accepted: records.length, duplicates: 0, rejected: 0, statsVersion: 1 }));
   });
 
   afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 
   it("collects once, skips tracked records, batches pending records, and updates tracking", async () => {
     const records = Array.from({ length: 1002 }, (_, index) => record(index));
-    const stored = config({ deviceToken: "token", username: "herman", syncedRecordHashes: records.slice(0, 2).map((item) => item.sourceRecordHash) });
+    const stored = config({ deviceToken: "token", username: "herman", syncedRecordHashes: records.slice(0, 2).map((item) => item.sourceRecordHash), syncedRecordFingerprints: Object.fromEntries(records.slice(0, 2).map((item) => [item.sourceRecordHash, recordFingerprint(item)])) });
     mocks.loadConfig.mockResolvedValue(stored);
     mocks.collect.mockResolvedValue(records);
     mocks.syncBatch.mockResolvedValue({ accepted: 500, duplicates: 0, rejected: 0, statsVersion: 1 });
@@ -107,6 +108,40 @@ describe("publish", () => {
     expect(mocks.pollDeviceToken).toHaveBeenCalledOnce();
     expect(mocks.syncBatch).toHaveBeenCalledOnce();
     expect(stored.deviceToken).toBe("x".repeat(32));
+  });
+
+  it("migrates legacy tracking, skips unchanged records, and sends changed counts, dates and costs", async () => {
+    const first = record(8);
+    const stored = config({ deviceToken: "token", syncedRecordHashes: [first.sourceRecordHash] });
+    mocks.loadConfig.mockResolvedValue(stored);
+    mocks.collect.mockResolvedValue([first]);
+    await publish();
+    expect(mocks.syncBatch).toHaveBeenCalledOnce();
+    mocks.syncBatch.mockClear();
+    await publish();
+    expect(mocks.syncBatch).not.toHaveBeenCalled();
+    for (const changed of [
+      { ...first, inputUncachedTokens: 10, processedTokens: 11, freshTokens: 11 },
+      { ...first, usageDate: "2026-09-12" },
+      { ...first, estimatedCostMicros: 500 },
+    ]) {
+      mocks.collect.mockResolvedValue([changed]);
+      await publish();
+      expect(mocks.syncBatch).toHaveBeenLastCalledWith(stored, [changed]);
+    }
+  });
+
+  it("retains successful batch progress but does not mark a failed batch as published", async () => {
+    const records = Array.from({ length: 501 }, (_, index) => record(index));
+    const stored = config({ deviceToken: "token" });
+    mocks.loadConfig.mockResolvedValue(stored);
+    mocks.collect.mockResolvedValue(records);
+    mocks.syncBatch.mockResolvedValueOnce({ accepted: 500, duplicates: 0, rejected: 0, statsVersion: 1 }).mockRejectedValueOnce(new Error("offline"));
+    await expect(publish()).rejects.toThrow("offline");
+    expect(Object.keys(stored.syncedRecordFingerprints ?? {})).toHaveLength(500);
+    expect(stored.syncedRecordFingerprints?.[records[500]!.sourceRecordHash]).toBeUndefined();
+    expect(stored.lastSuccessfulSync).toBeUndefined();
+    expect(mocks.saveConfig).toHaveBeenCalledOnce();
   });
 });
 

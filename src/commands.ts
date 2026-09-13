@@ -8,6 +8,7 @@ import { CcusageCollector, summarizeSources } from "./collector.js";
 import { loadConfig, logout as clearLogin, saveConfig, configPath } from "./config.js";
 import { pollDeviceToken, revokeDevice, startDeviceAuthorization, syncBatch, verifyProvider } from "./api.js";
 import { promptSecret } from "./secret-prompt.js";
+import { recordFingerprint } from "./record-fingerprint.js";
 
 const collector = new CcusageCollector();
 const sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -54,17 +55,21 @@ async function upload(records: UsageRecord[], options: { full?: boolean } = {}):
   const config = await loadConfig();
   if (!config.deviceToken) await login();
   const authenticated = await loadConfig();
-  const known = new Set(options.full ? [] : authenticated.syncedRecordHashes);
-  const pending = records.filter((record) => record.source === "hermes" || !known.has(record.sourceRecordHash));
+  const fingerprints = { ...authenticated.syncedRecordFingerprints };
+  const pending = records.filter((record) => options.full || fingerprints[record.sourceRecordHash] !== recordFingerprint(record));
   let accepted = 0, duplicates = 0;
   for (let index = 0; index < pending.length; index += 500) {
     const batch = pending.slice(index, index + 500);
     const result = await syncBatch(authenticated, batch);
     accepted += result.accepted; duplicates += result.duplicates;
-    batch.forEach((record) => known.add(record.sourceRecordHash));
+    if (result.rejected > 0 || result.accepted + result.duplicates !== batch.length) throw new Error("The server did not acknowledge every usage record. Run publish again to retry.");
+    batch.forEach((record) => { fingerprints[record.sourceRecordHash] = recordFingerprint(record); });
+    authenticated.syncedRecordFingerprints = Object.fromEntries(Object.entries(fingerprints).slice(-50_000));
+    authenticated.syncedRecordHashes = Object.keys(authenticated.syncedRecordFingerprints);
+    await saveConfig(authenticated);
     process.stderr.write(`Published ${Math.min(index + batch.length, pending.length)}/${pending.length}\r`);
   }
-  authenticated.lastSuccessfulSync = new Date().toISOString(); authenticated.syncedRecordHashes = [...known].slice(-50_000); await saveConfig(authenticated);
+  authenticated.lastSuccessfulSync = new Date().toISOString(); await saveConfig(authenticated);
   process.stdout.write(`\n${pc.green("✓")} ${accepted} new or updated · ${duplicates} already published\nYour profile: ${authenticated.apiBaseUrl}/${authenticated.username}\n`);
 }
 

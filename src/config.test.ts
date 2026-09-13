@@ -16,7 +16,12 @@ describe("normalizeConfig", () => {
       deviceToken: "secret-device-token",
       username: "herman",
       syncedRecordHashes: [],
+      syncedRecordFingerprints: {},
     });
     expect(config.timezone.length).toBeGreaterThan(0);
+  });
+  it("preserves valid fingerprints and discards malformed tracking", () => {
+    const hash = "a".repeat(64), fingerprint = "b".repeat(64);
+    expect(normalizeConfig({ syncedRecordFingerprints: { [hash]: fingerprint, invalid: "oops" } }).syncedRecordFingerprints).toEqual({ [hash]: fingerprint });
   });
 });
